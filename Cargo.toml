@@ -1,0 +1,18 @@
+[package]
+name = "gr-context"
+version = "0.1.0"
+authors = ["Luis Reis <luis.m.reis@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+cfg-if = "1.0.0"
+mini-drm = { path = "mini-drm", optional = true }
+mini-gbm = { path = "mini-gbm", optional = true }
+egl = "0.2.7"
+videocore = { version = "0.1.2", optional = true }
+
+[build-dependencies]
+
+[features]
+vc4=["videocore"]
+vc6=["mini-drm", "mini-gbm"]
