@@ -1,7 +1,14 @@
 cfg_if::cfg_if! {
   if #[cfg(feature = "vc6")] {
-    extern crate mini_drm as drm;
-    extern crate mini_gbm as gbm;
+    // mod mini_drm;
+    // mod mini_gbm;
+    mod drm {
+      pub mod mini_drm;
+    }
+    mod gbm {
+      pub mod mini_gbm;
+      pub mod gbm_formats;
+    }
 
     mod egl_utils;
 

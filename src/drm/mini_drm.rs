@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::ffi::CStr;
 use std::fs::File;
 use std::os::raw::{c_char, c_int};

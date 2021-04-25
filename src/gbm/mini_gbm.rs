@@ -1,8 +1,10 @@
+#![allow(dead_code)]
+
 use std::fs::File;
 // use std::os::raw::c_uint;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-mod gbm_formats;
+use super::gbm_formats;
 
 #[warn(improper_ctypes)]
 #[repr(C)]

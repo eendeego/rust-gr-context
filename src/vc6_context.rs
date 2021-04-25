@@ -1,10 +1,12 @@
 use egl;
-use gbm::gbm_bo_flags;
 use std::fs::File;
 use std::os::raw::c_void;
 use std::ptr;
 
+use crate::drm::mini_drm as drm;
 use crate::egl_utils::{choose_config, match_config_to_visual};
+use crate::gbm::mini_gbm as gbm;
+use crate::gbm::mini_gbm::gbm_bo_flags;
 
 #[rustfmt::skip]
 const ATTRIBUTES: [egl::EGLint; 13] = [

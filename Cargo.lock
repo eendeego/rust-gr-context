@@ -22,8 +22,6 @@ version = "0.1.0"
 dependencies = [
  "cfg-if",
  "egl",
- "mini-drm",
- "mini-gbm",
  "videocore",
 ]
 
@@ -47,14 +45,6 @@ name = "libc"
 version = "0.2.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9385f66bf6105b241aa65a61cb923ef20efc665cb9f9bb50ac2f0c4b7f378d41"
-
-[[package]]
-name = "mini-drm"
-version = "0.1.0"
-
-[[package]]
-name = "mini-gbm"
-version = "0.1.0"
 
 [[package]]
 name = "videocore"
