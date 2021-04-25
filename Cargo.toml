@@ -1,5 +1,8 @@
 [package]
 name = "gr-context"
+description = "Raspberry Pi Video Code IV/VI Graphics Context provider for running Open GL/ES directly on hardware"
+repository = "https://github.com/eendeego/rust-gr-context"
+license = "MIT"
 version = "0.1.0"
 authors = ["Luis Reis <luis.m.reis@gmail.com>"]
 edition = "2018"
