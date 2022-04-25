@@ -29,6 +29,8 @@ const GBM_FORMAT: u32 = gbm::GBM_FORMAT_XRGB8888;
 
 #[link(name = "drm")]
 #[link(name = "gbm")]
+#[link(name = "EGL")]
+#[link(name = "GLESv2")]
 extern "C" {}
 
 pub fn open_card(path: &str) -> File {
@@ -41,10 +43,13 @@ pub fn open_card(path: &str) -> File {
 
 pub struct Context {
   device: File,
-  connector: drm::DRMModeConnector,
+  mode: drm::DRMModeModeInfo,
+  connector_id: u32,
   crtc: drm::DRMModeCrtc,
   gbm_device: *mut gbm::RawDevice,
   gbm_surface: *mut gbm::RawSurface,
+  egl_major: i32,
+  egl_minor: i32,
   egl_display: egl::EGLDisplay,
   egl_context: egl::EGLContext,
   egl_surface: egl::EGLSurface,
@@ -55,34 +60,50 @@ pub struct Context {
 
 impl Context {
   pub fn new() -> Self {
-    let device = open_card("/dev/dri/card1");
+    let device = open_card("/dev/dri/by-path/platform-gpu-card");
 
-    let resources = drm::mode_get_resources(&device).expect("Couldn't get DRM Mode Resources");
-    let connector = drm::find_connector(&device, &resources).expect("No connector found");
-    let mode_info = &connector.modes[0];
-    let encoder = drm::find_encoder(&device, &connector).expect("No encoder found");
-    let crtc = drm::mode_get_crtc(&device, encoder.crtc_id);
+    let connector_id;
+    let mode;
+    let crtc;
+    {
+      let resources = drm::mode_get_resources(&device).expect("Couldn't get DRM Mode Resources");
+
+      let connector = drm::find_connector(&device, &resources).expect("No connector found");
+
+      connector_id = connector.connector_id;
+      mode = (&connector.modes[0]).copy();
+      let encoder = drm::find_encoder(&device, &connector).expect("No encoder found");
+
+      crtc = drm::mode_get_crtc(&device, encoder.crtc_id);
+    }
 
     let gbm_device = gbm::create_device(&device);
+
     let gbm_surface = gbm::surface_create(
       gbm_device,
-      mode_info.hdisplay as u32,
-      mode_info.vdisplay as u32,
+      mode.hdisplay as u32,
+      mode.vdisplay as u32,
       GBM_FORMAT,
       gbm_bo_flags::GBM_BO_USE_SCANOUT | gbm_bo_flags::GBM_BO_USE_RENDERING,
     );
 
     let egl_display = egl::get_display(gbm_device as *mut c_void).expect("Couldn't get display");
-    if !egl::initialize(egl_display, &mut 0i32, &mut 0i32) {
+
+    let mut egl_major = 0i32;
+    let mut egl_minor = 0i32;
+    if !egl::initialize(egl_display, &mut egl_major, &mut egl_minor) {
       panic!("Couldn't initialize egl")
     }
+
     if !egl::bind_api(egl::EGL_OPENGL_ES_API) {
       panic!("Couldn't bind API");
     }
 
     let egl_configs = choose_config(egl_display, &ATTRIBUTES).expect("Couldn't choose config");
+
     let egl_config = match_config_to_visual(egl_display, GBM_FORMAT as i32, egl_configs)
       .expect("Could't match visual");
+
     let egl_context = egl::create_context(
       egl_display,
       egl_config,
@@ -90,6 +111,7 @@ impl Context {
       &CONTEXT_ATTRIBS,
     )
     .expect("Couldn't create context");
+
     let egl_surface = egl::create_window_surface(
       egl_display,
       egl_config,
@@ -102,10 +124,13 @@ impl Context {
 
     return Context {
       device,
-      connector,
+      mode,
+      connector_id,
       crtc,
       gbm_device,
       gbm_surface,
+      egl_major,
+      egl_minor,
       egl_display,
       egl_context,
       egl_surface,
@@ -114,14 +139,18 @@ impl Context {
     };
   }
 
+  pub fn egl_version(&self) -> (i32, i32) {
+    (self.egl_major, self.egl_minor)
+  }
+
   #[inline(always)]
   pub fn width(&mut self) -> u32 {
-    self.connector.modes[0].hdisplay as u32
+    self.mode.hdisplay as u32
   }
 
   #[inline(always)]
   pub fn height(&mut self) -> u32 {
-    self.connector.modes[0].vdisplay as u32
+    self.mode.vdisplay as u32
   }
 
   pub fn swap_buffers(&mut self) {
@@ -130,8 +159,8 @@ impl Context {
     let fb: u32 = 0;
     drm::mode_add_fb(
       &self.device,
-      self.connector.modes[0].hdisplay as u32,
-      self.connector.modes[0].vdisplay as u32,
+      self.mode.hdisplay as u32,
+      self.mode.vdisplay as u32,
       24,
       32,
       gbm::bo_get_stride(bo),
@@ -144,8 +173,8 @@ impl Context {
       fb,
       0,
       0,
-      vec![self.connector.connector_id],
-      &self.connector.modes[0].raw,
+      vec![self.connector_id],
+      &self.mode.raw,
     );
 
     if !self.previous_bo.is_null() {
@@ -165,18 +194,18 @@ impl Drop for Context {
       self.crtc.buffer_id,
       self.crtc.x,
       self.crtc.y,
-      vec![self.connector.connector_id],
+      vec![self.connector_id],
       unsafe { &(*self.crtc.raw).mode },
     );
+    drm::mode_free_crtc(&mut self.crtc);
+
     if !(*self).previous_bo.is_null() {
       drm::mode_rm_fb(&self.device, self.previous_fb);
       gbm::surface_release_buffer(self.gbm_surface, self.previous_bo);
     }
 
-    egl::destroy_surface(self.egl_display, self.egl_surface);
     gbm::surface_destroy(self.gbm_surface);
     egl::destroy_context(self.egl_display, self.egl_context);
-    egl::terminate(self.egl_display);
     gbm::device_destroy(self.gbm_device);
   }
 }
