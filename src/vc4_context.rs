@@ -49,34 +49,96 @@ const ATTRIBUTES: [egl::EGLint; 15] = [
 // 0x00_00_84_28 => '(', 0x83, 0x00, 0x00
 // const GBM_FORMAT: u32 = 0x00_00_94_28;
 
-fn init_egl() -> (EGLConfig, EGLContext, EGLDisplay) {
+/*
+ * Original: https://github.com/matusnovak/rpi-opengl-without-x
+ */
+fn egl_get_error_str() -> &'static str {
+  match egl::get_error() {
+    egl::EGL_SUCCESS => "The last function succeeded without error.",
+    egl::EGL_NOT_INITIALIZED => {
+      "EGL is not initialized, or could not be initialized, for the \
+      specified EGL display connection."
+    }
+    egl::EGL_BAD_ACCESS => {
+      "EGL cannot access a requested resource (for example a context \
+      is bound in another thread)."
+    }
+    egl::EGL_BAD_ALLOC => "EGL failed to allocate resources for the requested operation.",
+    egl::EGL_BAD_ATTRIBUTE => {
+      "An unrecognized attribute or attribute value was passed in the \
+      attribute list."
+    }
+    egl::EGL_BAD_CONTEXT => {
+      "An EGLContext argument does not name a valid EGL rendering \
+      context."
+    }
+    egl::EGL_BAD_CONFIG => {
+      "An EGLConfig argument does not name a valid EGL frame buffer \
+      configuration."
+    }
+    egl::EGL_BAD_CURRENT_SURFACE => {
+      "The current surface of the calling thread is a window, pixel \
+      buffer or pixmap that is no longer valid."
+    }
+    egl::EGL_BAD_DISPLAY => {
+      "An EGLDisplay argument does not name a valid EGL display \
+      connection."
+    }
+    egl::EGL_BAD_SURFACE => {
+      "An EGLSurface argument does not name a valid surface (window, \
+      pixel buffer or pixmap) configured for GL rendering."
+    }
+    egl::EGL_BAD_MATCH => {
+      "Arguments are inconsistent (for example, a valid context \
+      requires buffers not supplied by a valid surface)."
+    }
+    egl::EGL_BAD_PARAMETER => "One or more argument values are invalid.",
+    egl::EGL_BAD_NATIVE_PIXMAP => {
+      "A NativePixmapType argument does not refer to a valid native \
+      pixmap."
+    }
+    egl::EGL_BAD_NATIVE_WINDOW => {
+      "A NativeWindowType argument does not refer to a valid native \
+      window."
+    }
+    egl::EGL_CONTEXT_LOST => {
+      "A power management event has occurred. The application must \
+      destroy all contexts and reinitialise OpenGL ES state and \
+      objects to continue rendering."
+    }
+    _ => "Unknown error!",
+  }
+}
+
+fn init_egl() -> (
+  EGLConfig,
+  EGLContext,
+  EGLDisplay,
+  i32, /* egl major */
+  i32, /* egl minor */
+) {
   bcm_host::init();
 
-  let egl_display = egl::get_display(egl::EGL_DEFAULT_DISPLAY).expect("Failed to get EGL display");
+  let egl_display = egl::get_display(egl::EGL_DEFAULT_DISPLAY)
+    .unwrap_or_else(|| panic!("Failed to get EGL display\n\n{}", egl_get_error_str()));
 
   // init display
-  if !egl::initialize(egl_display, &mut 0i32, &mut 0i32) {
-    panic!("Failed to initialize EGL");
+  let mut egl_major = 0i32;
+  let mut egl_minor = 0i32;
+  if !egl::initialize(egl_display, &mut egl_major, &mut egl_minor) {
+    panic!("Failed to initialize EGL\n\n{}", egl_get_error_str());
   }
 
-  // println!("EGL has {} configs", get_config_count(egl_display));
-
-  // let egl_configs = choose_config(egl_display, &ATTRIBUTES).expect("Couldn't choose config");
-  // let egl_configs = choose_config(egl_display, &[]).expect("Couldn't choose config");
-
-  // print_configs(egl_display, &egl_configs);
-
-  // let egl_config = match_config_to_visual(egl_display, GBM_FORMAT as i32, egl_configs)
-  //   .expect("Could't match visual");
-  // let egl_config = egl_configs[0];
-
   // choose first available configuration
-  let egl_config =
-    egl::choose_config(egl_display, &ATTRIBUTES, 1).expect("Failed to get EGL configuration");
+  let egl_config = egl::choose_config(egl_display, &ATTRIBUTES, 1)
+    .unwrap_or_else(|| panic!("Failed to get EGL configuration\n\n{}", egl_get_error_str()));
 
   // bind opengl es api
   if !egl::bind_api(egl::EGL_OPENGL_ES_API) {
-    panic!("Failed to bind EGL OpenGL ES API");
+    panic!(
+      "Failed to bind EGL OpenGL ES API\n\n{}",
+      egl_get_error_str()
+    );
   }
 
   // create egl context
@@ -86,24 +148,19 @@ fn init_egl() -> (EGLConfig, EGLContext, EGLDisplay) {
     egl::EGL_NO_CONTEXT,
     &CONTEXT_ATTRIBS,
   )
-  .expect("Failed to create EGL context");
+  .unwrap_or_else(|| panic!("Failed to create EGL context\n\n{}", egl_get_error_str()));
 
-  return (egl_config, egl_context, egl_display);
+  return (egl_config, egl_context, egl_display, egl_major, egl_minor);
 }
 
-fn init_dispmanx(device: u32) -> (DisplayHandle, Window) {
-  // first thing to do is initialize the broadcom host (when doing any graphics on RPi)
-  // again ?
-  // bcm_host::init();
-
+fn init_dispmanx(device: u16) -> (DisplayHandle, Window) {
   // get screen resolution (same display number as display_open()
-  let dimensions = bcm_host::graphics_get_display_size(device as u16)
-    .expect("Must call bcm_host::init() prior to any display operation on RPi");
+  let dimensions = bcm_host::graphics_get_display_size(device).expect("Could not get display size");
 
   // println!("Display size: {}x{}", dimensions.width, dimensions.height);
 
   // open the display
-  let dispman_display = dispmanx::display_open(device);
+  let dispman_display = dispmanx::display_open(device as u32);
 
   // get update handle
   let dispman_update = dispmanx::update_start(0 /* priority */);
@@ -145,8 +202,7 @@ fn init_dispmanx(device: u32) -> (DisplayHandle, Window) {
   let dispman_element = dispmanx::element_add(
     dispman_update,
     dispman_display,
-    // 3 /*layer*/, // layer upon which to draw
-    0, /* layer */
+    0, /*layer*/
     &mut dest_rect,
     0, /* src */
     &mut src_rect,
@@ -187,44 +243,63 @@ fn egl_from_dispmanx(
     (window as *mut _) as EGLNativeDisplayType,
     &[],
   )
-  .expect("Failed to create EGL surface");
+  .unwrap_or_else(|| panic!("Failed to create EGL surface\n\n{}", egl_get_error_str()));
 
   // set current context
   if !egl::make_current(egl_display, egl_surface, egl_surface, egl_context) {
-    panic!("Failed to make EGL current context");
+    panic!(
+      "Failed to make EGL current context\n\n{}",
+      egl_get_error_str()
+    );
   }
 
   return egl_surface;
 }
 
+// Can't derive Debug because Window doensn't implement it
 pub struct Context {
+  egl_major: i32,
+  egl_minor: i32,
   egl_context: EGLContext,
   egl_display: EGLDisplay,
   egl_surface: EGLSurface,
   dispman_display: DisplayHandle,
-
+  window: Window,
   width: u32,
   height: u32,
 }
 
 impl Context {
   pub fn new() -> Self {
-    let device = 0u32;
+    let device = 0u16; /* LCD */
 
-    let (egl_config, egl_context, egl_display) = init_egl();
+    let (egl_config, egl_context, egl_display, /*egl_surface,*/ egl_major, egl_minor) = init_egl();
 
-    let (dispman_display, mut window) = init_dispmanx(device);
+    let (dispman_display, window) = init_dispmanx(device);
 
-    let egl_surface = egl_from_dispmanx(egl_config, egl_context, egl_display, &mut window);
+    let width: u32 = window.width as u32;
+    let height: u32 = window.height as u32;
 
-    Context {
+    let mut context = Context {
+      egl_major,
+      egl_minor,
       egl_context,
       egl_display,
-      egl_surface,
+      egl_surface: ptr::null_mut() as EGLSurface,
       dispman_display,
-      width: window.width as u32,
-      height: window.height as u32,
-    }
+      window,
+      width,
+      height,
+    };
+
+    context.egl_surface =
+      egl_from_dispmanx(egl_config, egl_context, egl_display, &mut context.window);
+
+    return context;
+  }
+
+  pub fn egl_version(&self) -> (i32, i32) {
+    (self.egl_major, self.egl_minor)
   }
 
   #[inline(always)]
