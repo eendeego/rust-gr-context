@@ -157,6 +157,16 @@ pub struct DRMModeRes {
   pub max_width: u32,
   pub min_height: u32,
   pub max_height: u32,
+
+  pub raw: *const RawDRMModeRes,
+}
+
+impl Drop for DRMModeRes {
+  fn drop(&mut self) {
+    unsafe {
+      ffi::drmModeFreeResources(self.raw);
+    }
+  }
 }
 
 #[warn(improper_ctypes)]
@@ -178,6 +188,16 @@ pub struct DRMModeEncoder {
   pub crtc_id: u32,
   pub possible_crtcs: u32,
   pub possible_clones: u32,
+
+  pub raw: *const RawDRMModeEncoder,
+}
+
+impl Drop for DRMModeEncoder {
+  fn drop(&mut self) {
+    unsafe {
+      ffi::drmModeFreeEncoder(self.raw);
+    }
+  }
 }
 
 #[warn(improper_ctypes)]
@@ -265,6 +285,29 @@ pub mod ffi {
 }
 
 impl DRMModeModeInfo {
+  pub fn copy(&self) -> DRMModeModeInfo {
+    return DRMModeModeInfo {
+      clock: self.clock,
+      hdisplay: self.hdisplay,
+      hsync_start: self.hsync_start,
+      hsync_end: self.hsync_end,
+      htotal: self.htotal,
+      hskew: self.hskew,
+      vdisplay: self.vdisplay,
+      vsync_start: self.vsync_start,
+      vsync_end: self.vsync_end,
+      vtotal: self.vtotal,
+      vscan: self.vscan,
+
+      vrefresh: self.vrefresh,
+
+      flags: self.flags,
+      r#type: self.r#type,
+      name: self.name.clone().to_owned(),
+      raw: self.raw,
+    };
+  }
+
   pub fn from_raw(raw_mode_info: &RawDRMModeModeInfo) -> DRMModeModeInfo {
     let mut name = unsafe { CStr::from_bytes_with_nul_unchecked(&(*raw_mode_info).name) }
       .to_string_lossy()
@@ -298,8 +341,10 @@ impl DRMModeModeInfo {
 
 impl Drop for DRMModeConnector {
   fn drop(&mut self) {
-    unsafe {
-      ffi::drmModeFreeConnector(self.raw);
+    if self.raw != std::ptr::null() {
+      unsafe {
+        ffi::drmModeFreeConnector(self.raw);
+      }
     }
   }
 }
@@ -385,9 +430,9 @@ pub fn mode_get_resources(device: &File) -> Option<DRMModeRes> {
       max_width: (*raw_resources).max_width,
       min_height: (*raw_resources).min_height,
       max_height: (*raw_resources).max_height,
-    };
 
-    ffi::drmModeFreeResources(raw_resources);
+      raw: raw_resources,
+    };
 
     Some(result)
   }
@@ -415,8 +460,9 @@ pub fn mode_get_crtc(device: &File, crtc_id: u32) -> DRMModeCrtc {
   }
 }
 
-pub fn mode_free_crtc(crtc: &DRMModeCrtc) {
+pub fn mode_free_crtc(crtc: &mut DRMModeCrtc) {
   unsafe { ffi::drmModeFreeCrtc(crtc.raw) };
+  crtc.raw = std::ptr::null();
 }
 
 pub fn mode_add_fb(
@@ -498,9 +544,9 @@ pub fn find_encoder(device: &File, connector: *const DRMModeConnector) -> Option
       crtc_id: (*raw_encoder).crtc_id,
       possible_crtcs: (*raw_encoder).possible_crtcs,
       possible_clones: (*raw_encoder).possible_clones,
-    };
 
-    ffi::drmModeFreeEncoder(raw_encoder);
+      raw: raw_encoder,
+    };
 
     Some(encoder)
   }
