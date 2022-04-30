@@ -303,12 +303,12 @@ impl Context {
   }
 
   #[inline(always)]
-  pub fn width(&mut self) -> u32 {
+  pub fn width(&self) -> u32 {
     self.width
   }
 
   #[inline(always)]
-  pub fn height(&mut self) -> u32 {
+  pub fn height(&self) -> u32 {
     self.height
   }
 

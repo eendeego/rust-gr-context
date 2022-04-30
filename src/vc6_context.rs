@@ -144,12 +144,12 @@ impl Context {
   }
 
   #[inline(always)]
-  pub fn width(&mut self) -> u32 {
+  pub fn width(&self) -> u32 {
     self.mode.hdisplay as u32
   }
 
   #[inline(always)]
-  pub fn height(&mut self) -> u32 {
+  pub fn height(&self) -> u32 {
     self.mode.vdisplay as u32
   }
 
